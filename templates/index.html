@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>UTS IOT</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 20px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+
+      form {
+        margin-bottom: 20px;
+        text-align: center;
+        width: 100%;
+        max-width: 600px;
+      }
+
+      label {
+        font-weight: bold;
+        display: block;
+        margin-top: 10px;
+      }
+
+      input[type="range"] {
+        width: 100%;
+        margin: 5px 0 20px;
+      }
+
+      button[type="submit"], #get-data {
+        background-color: #4CAF50;
+        color: white;
+        padding: 10px 20px;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 16px;
+        transition: background-color 0.3s;
+      }
+
+      button[type="submit"]:hover, #get-data:hover {
+        background-color: #45a049;
+      }
+
+      table {
+        width: 100%;
+        max-width: 600px;
+        border-collapse: collapse;
+        margin-top: 20px;
+        text-align: center;
+      }
+
+      th, td {
+        padding: 10px;
+        border: 1px solid #ddd;
+      }
+
+      th {
+        background-color: #4CAF50;
+        color: white;
+      }
+
+      tr:nth-child(even) {
+        background-color: #f2f2f2;
+      }
+
+      tr:hover {
+        background-color: #ddd;
+      }
+
+      .value-display {
+        margin-top: 5px;
+        font-size: 14px;
+      }
+    </style>
+  </head>
+  <body>
+    <form id="form">
+      <label for="suhu">Suhu:</label>
+      <input id="suhu" type="range" name="suhu" min="0" max="100" value="0" />
+      <div id="suhu-value" class="value-display">0°C</div>
+      
+      <label for="kelembaban">Kelembaban:</label>
+      <input id="kelembaban" type="range" name="kelembaban" min="0" max="100" value="0" />
+      <div id="kelembaban-value" class="value-display">0%</div>
+      
+      <label for="kecerahan">Kecerahan:</label>
+      <input id="kecerahan" type="range" name="kecerahan" min="0" max="100" value="0" />
+      <div id="kecerahan-value" class="value-display">0%</div>
+    </form>
+    
+    <table>
+      <thead>
+        <tr>
+          <th>IDX</th>
+          <th>Suhu</th>
+          <th>Kelembaban</th>
+          <th>Kecerahan</th>
+          <th>Timestamp</th>
+        </tr>
+      </thead>
+      <tbody id="table-content"></tbody>
+    </table>
+    <button id="download-json" type="button">Download JSON</button>
+
+    <script>
+    // Button for downloading the JSON file
+    document.getElementById("download-json").addEventListener("click", async () => {
+        const response = await fetch('/api/download');
+        
+        if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'data.json'; // Nama file yang akan diunduh
+        link.click();
+        } else {
+        alert('Gagal mengunduh file JSON');
+        }
+    });
+    </script>
+
+    <script>
+      // Update nilai slider saat digeser
+      function updateSliderValue(sliderId, valueId, unit) {
+        const slider = document.getElementById(sliderId);
+        const valueDisplay = document.getElementById(valueId);
+        
+        slider.addEventListener('input', () => {
+          valueDisplay.textContent = `${slider.value}${unit}`;
+        });
+      }
+
+      updateSliderValue('suhu', 'suhu-value', '°C');
+      updateSliderValue('kelembaban', 'kelembaban-value', '%');
+      updateSliderValue('kecerahan', 'kecerahan-value', '%');
+
+      // Function to send data automatically every 5 seconds
+      async function sendData() {
+        const form = document.getElementById('form');
+
+        const data = {
+          suhu: form.suhu.value,
+          kelembaban: form.kelembaban.value,
+          kecerahan: form.kecerahan.value,
+        };
+
+        try {
+          const response = await fetch("/api/post", {
+            method: "post",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(data),
+          });
+
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+
+          console.log("Data berhasil dikirim!");
+          loadData(); // Refresh table after successful submission
+        } catch (error) {
+          console.error("Error:", error);
+          alert("Gagal mengirim data: " + error.message);
+        }
+      }
+
+      // Load and display data
+      async function loadData() {
+        const table = document.querySelector("#table-content");
+        
+        try {
+          const response = await fetch("/api/get");
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+
+          const json = await response.json();
+          const database = json["nilai_suhu_max_humid_max"];
+
+          if (!database || !Array.isArray(database)) {
+            throw new Error("Data tidak valid");
+          }
+
+          table.innerHTML = "";
+
+          database.forEach(data => {
+            const row = document.createElement("tr");
+            
+            // Format timestamp untuk tampilan yang lebih baik
+            const timestamp = new Date(data.timestamp).toLocaleString('id-ID', {
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit'
+            });
+
+            row.innerHTML = `
+              <td>${data.idx}</td>
+              <td>${data.suhu}°C</td>
+              <td>${data.humid}%</td>
+              <td>${data.kecerahan}%</td>
+              <td>${timestamp}</td>
+            `;
+            
+            table.appendChild(row);
+          });
+        } catch (error) {
+          console.error("Error:", error);
+          alert("Gagal memuat data: " + error.message);
+        }
+      }
+
+      // Automatically send data every 5 seconds
+      setInterval(sendData, 5000);
+
+      // Load data when page loads
+      loadData();
+    </script>
+  </body>
+</html>
